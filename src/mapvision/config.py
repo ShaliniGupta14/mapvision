@@ -9,7 +9,7 @@ from __future__ import annotations
 import random
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -50,6 +50,8 @@ class TrainingConfig:
 @dataclass
 class LossConfig:
     type: str = "cross_entropy"
+    # Optional per-class CE weights, ordered like CLASS_NAMES.
+    class_weights: Optional[List[float]] = None
 
 
 @dataclass

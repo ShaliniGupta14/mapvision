@@ -27,6 +27,7 @@ training:
 
 loss:
   type: cross_entropy   # options: cross_entropy | ce_dice
+  class_weights: null   # optional, e.g. [1.0, 3.0, 1.0, 1.0, 1.0] (CLASS_NAMES order)
 
 augmentation:
   enabled: true

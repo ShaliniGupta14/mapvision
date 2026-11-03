@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from mapvision.config import Config, get_device, set_seeds
 from mapvision.dataset import CLASS_NAMES, MapDataset
 from mapvision.evaluate import evaluate
-from mapvision.losses import build_loss
+from mapvision.losses import build_loss, class_weight_tensor
 from mapvision.model import UNet, build_model, model_summary
 from mapvision.transforms import TrainTransform, ValTransform
 from mapvision.utils import save_json
@@ -126,7 +126,8 @@ def train(cfg: Config, output_dir: Optional[str] = None) -> Path:
     ).to(device)
     model_summary(model)
 
-    criterion = build_loss(cfg.loss.type)
+    weights = class_weight_tensor(cfg.loss.class_weights, cfg.model.num_classes, device)
+    criterion = build_loss(cfg.loss.type, weight=weights)
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
 

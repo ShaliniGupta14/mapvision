@@ -6,6 +6,8 @@ via the YAML config's loss.type field.
 
 from __future__ import annotations
 
+from typing import Sequence
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,12 +74,32 @@ class CEDiceLoss(nn.Module):
         )
 
 
+def class_weight_tensor(
+    weights: Sequence[float] | None, num_classes: int, device: torch.device
+) -> torch.Tensor | None:
+    """Convert configured class weights to a tensor, validating length.
+
+    Raises:
+        ValueError: If the number of weights differs from num_classes or
+                    any weight is negative.
+    """
+    if weights is None:
+        return None
+    if len(weights) != num_classes:
+        raise ValueError(
+            f"loss.class_weights has {len(weights)} entries; expected {num_classes}"
+        )
+    if any(w < 0 for w in weights):
+        raise ValueError(f"loss.class_weights must be non-negative, got {list(weights)}")
+    return torch.tensor(weights, dtype=torch.float32, device=device)
+
+
 def build_loss(loss_type: str, weight: torch.Tensor | None = None) -> nn.Module:
     """Factory function to build a loss from config string.
 
     Args:
         loss_type: "cross_entropy" or "ce_dice".
-        weight:    Optional class-weight tensor for CE.
+        weight:    Optional class-weight tensor for CE (on the training device).
 
     Returns:
         An nn.Module implementing the chosen loss.
