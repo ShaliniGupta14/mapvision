@@ -398,4 +398,4 @@ If you use the dataset, please cite:
 }
 ```
 
-The dataset is licensed [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/deed.en).
+Code: [MIT](LICENSE). Dataset: [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/deed.en), so the trained weights and the sample tiles are for non-commercial use.
