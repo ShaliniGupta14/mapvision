@@ -17,7 +17,7 @@ dist/
 build/
 
 # Checkpoints and model outputs
-checkpoints/*.pt
+checkpoints/**/*.pt
 runs/
 
 # Training outputs
