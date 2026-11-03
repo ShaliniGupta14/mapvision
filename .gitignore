@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Test cache
+.pytest_cache/
+
 # Virtual environment
 .venv/
 venv/
@@ -14,8 +17,7 @@ dist/
 build/
 
 # Checkpoints and model outputs
-checkpoints/best.pt
-checkpoints/latest.pt
+checkpoints/*.pt
 runs/
 
 # Training outputs
