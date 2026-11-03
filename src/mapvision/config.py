@@ -7,7 +7,7 @@ flow through this module rather than being hardcoded in scripts.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Optional
 
@@ -96,68 +96,43 @@ def _merge(base: dict, override: dict) -> dict:
     return result
 
 
+_SECTIONS = {f.name: f.default_factory for f in fields(Config) if f.name != "seed"}
+
+
 def load_config(path: Optional[str] = None) -> Config:
-    """Load config from YAML file, falling back to defaults."""
-    defaults = {
-        "seed": 42,
-        "data": {
-            "image_size": 256,
-            "num_classes": 5,
-            "batch_size": 4,
-            "num_workers": 0,
-            "train_manifest": "splits/train.json",
-            "val_manifest": "splits/val.json",
-            "test_manifest": "splits/test.json",
-            "classes_path": "classes.json",
-        },
-        "model": {
-            "name": "unet",
-            "in_channels": 3,
-            "num_classes": 5,
-            "base_channels": 16,
-        },
-        "training": {
-            "epochs": 25,
-            "learning_rate": 1e-3,
-            "weight_decay": 1e-4,
-            "optimizer": "adamw",
-            "scheduler": "reduce_lr_on_plateau",
-            "scheduler_patience": 5,
-            "scheduler_factor": 0.5,
-        },
-        "loss": {"type": "cross_entropy"},
-        "augmentation": {
-            "enabled": True,
-            "horizontal_flip": True,
-            "vertical_flip": True,
-            "rotation_90": True,
-            "brightness_contrast": True,
-        },
-        "device": {"prefer_mps": True},
-        "paths": {
-            "checkpoints": "checkpoints",
-            "outputs": "outputs",
-            "runs": "runs",
-        },
-    }
+    """Load config from YAML file, falling back to dataclass defaults.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+        ValueError:        If the YAML contains unknown sections or keys.
+    """
+    raw = asdict(Config())
 
     if path is not None:
-        with open(path) as f:
-            loaded = yaml.safe_load(f) or {}
-        raw = _merge(defaults, loaded)
-    else:
-        raw = defaults
+        config_path = Path(path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {path}")
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if not isinstance(loaded, dict):
+            raise ValueError(f"Config {path} must be a YAML mapping")
+        raw = _merge(raw, loaded)
 
-    return Config(
-        seed=raw["seed"],
-        data=DataConfig(**raw["data"]),
-        model=ModelConfig(**raw["model"]),
-        training=TrainingConfig(**raw["training"]),
-        loss=LossConfig(**raw["loss"]),
-        augmentation=AugmentationConfig(**raw["augmentation"]),
-        device=DeviceConfig(**raw["device"]),
-        paths=PathsConfig(**raw["paths"]),
-    )
+    unknown = set(raw) - set(_SECTIONS) - {"seed"}
+    if unknown:
+        raise ValueError(f"Unknown config sections: {sorted(unknown)}")
+
+    sections = {}
+    for name, factory in _SECTIONS.items():
+        allowed = {f.name for f in fields(factory)}
+        bad_keys = set(raw[name]) - allowed
+        if bad_keys:
+            raise ValueError(
+                f"Unknown keys in config section '{name}': {sorted(bad_keys)}. "
+                f"Allowed: {sorted(allowed)}"
+            )
+        sections[name] = factory(**raw[name])
+
+    return Config(seed=raw["seed"], **sections)
 
 
 def set_seeds(seed: int) -> None:
