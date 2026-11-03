@@ -2,11 +2,13 @@
 """Dataset validation script for MapVision.
 
 Checks all image/mask pairs in a manifest for:
-  - file existence
-  - image readability
-  - correct dimensions (after resize)
-  - valid mask class IDs (0–4 only)
+  - file existence and readability
   - matching image/mask filenames
+  - supported image channels
+  - matching, non-empty image/mask dimensions
+  - valid mask class IDs (0–4 only)
+
+then loads one batch through a DataLoader to confirm tensor shapes and dtypes.
 
 Usage:
     python scripts/validate_dataset.py
@@ -17,92 +19,51 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import numpy as np
 import torch
-from PIL import Image, UnidentifiedImageError
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from mapvision.dataset import CLASS_NAMES, MapDataset
+from mapvision.dataset import CLASS_NAMES, DatasetError, MapDataset, validate_record
 
 
-def validate_manifest(manifest: str, classes_path: str = "classes.json") -> bool:
-    """Validate all records in one manifest file.
+def check_first_batch(dataset: MapDataset, size: int) -> None:
+    """Load one batch and assert the shape/dtype/range contract."""
+    loader = DataLoader(dataset, batch_size=min(4, len(dataset)), shuffle=False, num_workers=0)
+    images, masks = next(iter(loader))
+    n = images.shape[0]
+    assert images.shape == (n, 3, size, size), f"Bad image shape: {tuple(images.shape)}"
+    assert masks.shape == (n, size, size), f"Bad mask shape: {tuple(masks.shape)}"
+    assert images.dtype == torch.float32, f"Image dtype should be float32, got {images.dtype}"
+    assert masks.dtype == torch.int64, f"Mask dtype should be int64, got {masks.dtype}"
+    assert images.min() >= 0 and images.max() <= 1, "Image values out of [0, 1]"
+    print(f"  Images: {images.shape} {images.dtype}")
+    print(f"  Masks:  {masks.shape} {masks.dtype}")
+    print(f"  Class IDs in batch: {masks.unique().tolist()}")
+    print(f"  Class order: {CLASS_NAMES}")
 
-    Returns True if all checks pass, False otherwise.
-    """
-    records = json.loads(Path(manifest).read_text())
-    print(f"\n{'='*55}")
-    print(f"  Manifest : {manifest}  ({len(records)} records)")
-    print(f"{'='*55}")
 
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    for i, rec in enumerate(tqdm(records, desc="Checking files")):
-        img_path = Path(rec["image"])
-        lbl_path = Path(rec["label"])
-
-        # Existence
-        if not img_path.exists():
-            errors.append(f"  [{i}] Missing image : {img_path}")
-            continue
-        if not lbl_path.exists():
-            errors.append(f"  [{i}] Missing label : {lbl_path}")
-            continue
-
-        # Stem match
-        if img_path.stem != lbl_path.stem:
-            warnings.append(
-                f"  [{i}] Stem mismatch: image={img_path.stem}, label={lbl_path.stem}"
-            )
-
-        # Readability + channel check
-        try:
-            with Image.open(img_path) as img:
-                if img.mode not in ("RGB", "RGBA", "L"):
-                    warnings.append(f"  [{i}] Unexpected image mode: {img.mode}")
-        except (UnidentifiedImageError, OSError) as e:
-            errors.append(f"  [{i}] Unreadable image: {img_path} — {e}")
-            continue
-
-        try:
-            with Image.open(lbl_path) as lbl:
-                if lbl.mode not in ("RGB", "RGBA"):
-                    warnings.append(f"  [{i}] Unexpected label mode: {lbl.mode}")
-        except (UnidentifiedImageError, OSError) as e:
-            errors.append(f"  [{i}] Unreadable label: {lbl_path} — {e}")
-
-    # Dataset-level dataloader check (first batch)
+def validate_manifest(manifest: str, classes_path: str, size: int) -> bool:
+    """Validate all records in one manifest file. Returns True if all pass."""
+    print(f"\n{'=' * 55}")
     try:
-        ds = MapDataset(manifest, size=256, classes_path=classes_path)
-        loader = DataLoader(ds, batch_size=min(4, len(ds)), shuffle=False, num_workers=0)
-        images, masks = next(iter(loader))
-        assert images.shape[1:] == (3, 256, 256), f"Bad image shape: {images.shape}"
-        assert masks.ndim == 3, f"Mask should be (N, H, W), got {masks.shape}"
-        assert masks.dtype == torch.int64, f"Mask dtype should be int64, got {masks.dtype}"
-        assert images.min() >= 0 and images.max() <= 1, "Image values out of [0,1]"
-        unique = masks.unique().tolist()
-        bad = [v for v in unique if v not in range(5)]
-        if bad:
-            errors.append(f"  Invalid class IDs in masks: {bad}")
-        print(f"\n  DataLoader check passed.")
-        print(f"    Image shape : {tuple(images.shape)}")
-        print(f"    Mask shape  : {tuple(masks.shape)}")
-        print(f"    Class IDs   : {unique}")
-    except Exception as e:
-        errors.append(f"  DataLoader check failed: {e}")
+        dataset = MapDataset(manifest, size=size, classes_path=classes_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"  {manifest}: {exc}")
+        return False
+    print(f"  Manifest : {manifest}  ({len(dataset)} records)")
+    print(f"{'=' * 55}")
 
-    if warnings:
-        print(f"\n  Warnings ({len(warnings)}):")
-        for w in warnings:
-            print(w)
+    errors = []
+    for i, record in enumerate(tqdm(dataset.records, desc="Checking pairs")):
+        try:
+            validate_record(record, dataset.colors)
+        except DatasetError as exc:
+            errors.append(f"  [{i}] {exc}")
 
     if errors:
         print(f"\n  ERRORS ({len(errors)}):")
@@ -112,26 +73,22 @@ def validate_manifest(manifest: str, classes_path: str = "classes.json") -> bool
             print(f"  … and {len(errors) - 20} more errors.")
         return False
 
+    try:
+        check_first_batch(dataset, size)
+    except (AssertionError, DatasetError, OSError) as exc:
+        print(f"\n  DataLoader check failed: {exc}")
+        return False
+
     print(f"\n  ✓ All checks passed for {manifest}")
     return True
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate MapVision dataset manifests")
-    parser.add_argument(
-        "--manifest",
-        help="Single manifest file to check (default: all three splits)",
-    )
-    parser.add_argument(
-        "--manifests",
-        nargs="+",
-        help="One or more manifest files to check",
-    )
-    parser.add_argument(
-        "--classes",
-        default="classes.json",
-        help="Path to classes.json",
-    )
+    parser.add_argument("--manifest", help="Single manifest file to check")
+    parser.add_argument("--manifests", nargs="+", help="One or more manifest files to check")
+    parser.add_argument("--classes", default="classes.json", help="Path to classes.json")
+    parser.add_argument("--size", type=int, default=256, help="Expected tile size")
     args = parser.parse_args()
 
     if args.manifest:
@@ -141,11 +98,8 @@ def main() -> None:
     else:
         manifests = ["splits/train.json", "splits/val.json", "splits/test.json"]
 
-    all_ok = True
-    for m in manifests:
-        ok = validate_manifest(m, args.classes)
-        all_ok = all_ok and ok
-
+    results = [validate_manifest(m, args.classes, args.size) for m in manifests]
+    all_ok = all(results)
     print("\n" + ("✓ All manifests passed." if all_ok else "✗ Some checks failed."))
     sys.exit(0 if all_ok else 1)
 
