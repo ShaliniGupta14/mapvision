@@ -17,7 +17,7 @@ model:
   base_channels: 16
 
 training:
-  epochs: 25
+  epochs: 80            # val mIoU still rising at 25; plateaus ~55 (see README)
   learning_rate: 0.001
   weight_decay: 0.0001
   optimizer: adamw

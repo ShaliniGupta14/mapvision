@@ -38,7 +38,7 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
-    epochs: int = 25
+    epochs: int = 80
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     optimizer: str = "adamw"
