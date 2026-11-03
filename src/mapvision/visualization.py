@@ -16,7 +16,9 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from PIL import Image
 
+from mapvision.dataset import CLASS_NAMES
 
 # Fixed class color palette (RGB, 0–255) — stable across all runs
 CLASS_COLORS = np.array(
@@ -29,8 +31,7 @@ CLASS_COLORS = np.array(
     ],
     dtype=np.uint8,
 )
-
-CLASS_NAMES = ["frame", "water", "blocks", "non-built", "road_network"]
+assert len(CLASS_COLORS) == len(CLASS_NAMES)
 
 
 def mask_to_rgb(mask: np.ndarray) -> np.ndarray:
@@ -139,6 +140,12 @@ def save_prediction_grid(
     plt.close(fig)
 
 
+def _save_rgb(rgb: np.ndarray, save_path: str | Path) -> None:
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(rgb).save(save_path)
+
+
 def save_mask_only(mask: torch.Tensor, save_path: str | Path) -> None:
     """Save a class-ID mask as a colorized PNG.
 
@@ -146,10 +153,40 @@ def save_mask_only(mask: torch.Tensor, save_path: str | Path) -> None:
         mask:      Int64 tensor (H, W).
         save_path: Output file path.
     """
-    from PIL import Image as PILImage
+    _save_rgb(mask_to_rgb(mask.cpu().numpy()), save_path)
 
-    mask_np = mask.cpu().numpy()
-    rgb = mask_to_rgb(mask_np)
+
+def save_image(image: torch.Tensor, save_path: str | Path) -> None:
+    """Save a float image tensor (3, H, W) in [0, 1] as a PNG."""
+    _save_rgb(tensor_to_numpy_image(image), save_path)
+
+
+def save_overlay(
+    image: torch.Tensor, mask: torch.Tensor, save_path: str | Path, alpha: float = 0.45
+) -> None:
+    """Save the class-color mask blended over the source image as a PNG."""
+    _save_rgb(overlay_mask(tensor_to_numpy_image(image), mask.cpu().numpy(), alpha), save_path)
+
+
+def plot_training_history(history: List[dict], save_path: str | Path) -> None:
+    """Plot train/val loss and val mIoU/Dice per epoch to a PNG.
+
+    Args:
+        history:   Rows from a run's history.json.
+        save_path: Output PNG file path.
+    """
+    epochs = [row["epoch"] for row in history]
+    fig, (ax_loss, ax_metric) = plt.subplots(1, 2, figsize=(11, 4))
+    ax_loss.plot(epochs, [r["train_loss"] for r in history], label="train")
+    ax_loss.plot(epochs, [r["val_loss"] for r in history], label="val")
+    ax_loss.set(title="Loss", xlabel="epoch")
+    ax_loss.legend()
+    ax_metric.plot(epochs, [r["val_miou"] for r in history], label="val mIoU")
+    ax_metric.plot(epochs, [r["val_dice"] for r in history], label="val Dice")
+    ax_metric.set(title="Validation metrics", xlabel="epoch", ylim=(0, 1))
+    ax_metric.legend()
+    plt.tight_layout()
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    PILImage.fromarray(rgb).save(save_path)
+    fig.savefig(save_path, dpi=120)
+    plt.close(fig)
