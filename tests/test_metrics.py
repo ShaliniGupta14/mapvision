@@ -113,3 +113,46 @@ class TestConfusionMatrixFromLogits:
         cm = confusion_matrix_from_logits(logits, targets, num_classes=5)
         total = 2 * 32 * 32
         assert cm.sum().item() == total
+
+
+class TestKnownDiceAndPrecisionRecall:
+    """4x4 grid: target left half class 0, right half class 1.
+    Prediction marks the left half plus one right-column of 4 pixels as class 0.
+
+    class 0: TP=8, FP=4, FN=0 → IoU=8/12, Dice=16/20, P=8/12, R=1
+    class 1: TP=4, FP=0, FN=4 → IoU=4/8,  Dice=8/12,  P=1,    R=4/8
+    """
+
+    def setup_method(self):
+        tgts = torch.zeros(4, 4, dtype=torch.int64)
+        tgts[:, 2:] = 1
+        preds = tgts.clone()
+        preds[:, 2] = 0
+        m = SegmentationMetrics(num_classes=5)
+        m.update(preds, tgts)
+        self.r = m.compute()
+
+    def test_iou(self):
+        assert self.r["per_class_iou"]["0"] == pytest.approx(8 / 12)
+        assert self.r["per_class_iou"]["1"] == pytest.approx(4 / 8)
+        assert self.r["mean_iou"] == pytest.approx((8 / 12 + 4 / 8) / 2)
+
+    def test_dice(self):
+        assert self.r["per_class_dice"]["0"] == pytest.approx(16 / 20)
+        assert self.r["per_class_dice"]["1"] == pytest.approx(8 / 12)
+        assert self.r["mean_dice"] == pytest.approx((16 / 20 + 8 / 12) / 2)
+
+    def test_precision_recall(self):
+        assert self.r["per_class_precision"]["0"] == pytest.approx(8 / 12)
+        assert self.r["per_class_recall"]["0"] == pytest.approx(1.0)
+        assert self.r["per_class_precision"]["1"] == pytest.approx(1.0)
+        assert self.r["per_class_recall"]["1"] == pytest.approx(0.5)
+
+    def test_absent_classes_are_none_not_zero(self):
+        for key in ("per_class_iou", "per_class_dice", "per_class_precision", "per_class_recall"):
+            assert self.r[key]["4"] is None
+
+    def test_confusion_matrix(self):
+        cm = self.r["confusion_matrix"]
+        assert cm[0][0] == 8 and cm[1][0] == 4 and cm[1][1] == 4
+        assert sum(map(sum, cm)) == 16

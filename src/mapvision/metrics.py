@@ -91,21 +91,24 @@ class SegmentationMetrics:
         )
         mean_dice = dice[dice_present].mean().item() if dice_present.any() else 0.0
 
-        per_class_iou = {
-            name: iou[i].item() if present[i].item() else None
-            for i, name in enumerate(self.class_names)
-        }
-        per_class_dice = {
-            name: dice[i].item() if dice_present[i].item() else None
-            for i, name in enumerate(self.class_names)
-        }
+        # Per-class precision/recall (per-class F1 equals per-class Dice)
+        precision = tp / col_sum.clamp_min(1)
+        recall = tp / row_sum.clamp_min(1)
+
+        def per_class(values: torch.Tensor, defined: torch.Tensor) -> Dict:
+            return {
+                name: values[i].item() if defined[i].item() else None
+                for i, name in enumerate(self.class_names)
+            }
 
         return {
             "pixel_accuracy": pixel_accuracy,
             "mean_iou": mean_iou,
             "mean_dice": mean_dice,
-            "per_class_iou": per_class_iou,
-            "per_class_dice": per_class_dice,
+            "per_class_iou": per_class(iou, present),
+            "per_class_dice": per_class(dice, dice_present),
+            "per_class_precision": per_class(precision, col_sum > 0),
+            "per_class_recall": per_class(recall, row_sum > 0),
             "confusion_matrix": self.confusion.tolist(),
         }
 
