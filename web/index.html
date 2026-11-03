@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MapVision — Historical Map Segmentation</title>
+  <meta name="description" content="Live in-browser demo of a U-Net that segments historical city maps into frame, water, building blocks, non-built land and road network.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23dc643c'/><path d='M6 22 L13 9 L19 17 L22 13 L27 22 Z' fill='%23f0f0dc'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Semantic segmentation · PyTorch → ONNX</p>
+      <h1>MapVision</h1>
+      <p class="lede">A compact U-Net that turns scanned historical city maps into five pixel-level layers. The model runs <strong>entirely in your browser</strong>, so nothing you upload leaves your device.</p>
+      <div class="hero-links">
+        <a class="btn" href="#demo">Try the demo</a>
+        <a class="btn ghost" href="https://github.com/ShaliniGupta14/mapvision" target="_blank" rel="noopener">View code on GitHub</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="demo" class="card">
+      <div class="card-head">
+        <h2>Live demo</h2>
+        <span id="status" class="status" role="status">Loading model…</span>
+      </div>
+
+      <div class="controls">
+        <div>
+          <p class="label">Pick a held-out test tile</p>
+          <div id="samples" class="samples"></div>
+        </div>
+        <div class="upload">
+          <p class="label">…or use your own map</p>
+          <label class="btn ghost file">
+            <input id="file" type="file" accept="image/*">
+            Upload image
+          </label>
+          <p class="hint">Resized to 256×256. Works best on city-scale maps.</p>
+        </div>
+      </div>
+
+      <div class="panels">
+        <figure>
+          <canvas id="input" width="256" height="256"></canvas>
+          <figcaption>Input</figcaption>
+        </figure>
+        <figure id="gt-figure">
+          <img id="gt" alt="Ground-truth mask" width="256" height="256">
+          <figcaption>Ground truth</figcaption>
+        </figure>
+        <figure>
+          <canvas id="pred" width="256" height="256"></canvas>
+          <figcaption>Prediction</figcaption>
+        </figure>
+        <figure>
+          <canvas id="overlay" width="256" height="256"></canvas>
+          <figcaption>
+            Overlay
+            <input id="alpha" type="range" min="0" max="100" value="50" aria-label="Overlay opacity">
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="legend-row">
+        <ul id="legend" class="legend"></ul>
+        <p id="timing" class="timing"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Measured results</h2>
+      <p class="muted" id="results-note"></p>
+      <div class="stats" id="stats"></div>
+      <table class="per-class">
+        <thead><tr><th>Class</th><th>IoU</th><th>Dice</th><th class="bar-col"></th></tr></thead>
+        <tbody id="per-class"></tbody>
+      </table>
+      <p class="muted small">Water covers only 2.8% of training pixels and remains the hardest class. Plain building blocks are often confused with non-built land. Details and limitations are in the <a href="https://github.com/ShaliniGupta14/mapvision#results" target="_blank" rel="noopener">README</a>.</p>
+    </section>
+
+    <section class="card how">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><strong>Data.</strong> 1000×1000 annotated patches of Paris maps (1760–1994), split by source map so no map appears in both training and test.</li>
+        <li><strong>Model.</strong> A 3-level U-Net with skip connections, BatchNorm and bilinear upsampling, trained with AdamW on Apple Silicon (MPS).</li>
+        <li><strong>Deploy.</strong> Exported to ONNX and checked against PyTorch (identical predictions), then run here with ONNX Runtime Web (WebAssembly).</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p>Data: <a href="https://zenodo.org/record/5513639" target="_blank" rel="noopener">Historical City Maps Semantic Segmentation Dataset</a> (Petitpierre, 2021), CC BY-NC 4.0. Sample tiles and model weights are for non-commercial use. Code: MIT.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

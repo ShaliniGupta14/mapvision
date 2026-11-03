@@ -43,3 +43,6 @@ data/masks/
 
 # Logs
 *.log
+
+# Vercel CLI project link
+.vercel/

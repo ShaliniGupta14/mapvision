@@ -1,0 +1,95 @@
+{
+  "classes": [
+    {
+      "name": "frame",
+      "color": [
+        30,
+        30,
+        30
+      ]
+    },
+    {
+      "name": "water",
+      "color": [
+        70,
+        130,
+        200
+      ]
+    },
+    {
+      "name": "blocks",
+      "color": [
+        220,
+        100,
+        60
+      ]
+    },
+    {
+      "name": "non-built",
+      "color": [
+        120,
+        190,
+        100
+      ]
+    },
+    {
+      "name": "road_network",
+      "color": [
+        240,
+        240,
+        220
+      ]
+    }
+  ],
+  "image_size": 256,
+  "samples": [
+    {
+      "id": "12148_btv1b53062148cf1_0",
+      "image": "samples/12148_btv1b53062148cf1_0.jpg",
+      "gt": "samples/12148_btv1b53062148cf1_0_gt.png"
+    },
+    {
+      "id": "12148_btv1b53058291ff1_0",
+      "image": "samples/12148_btv1b53058291ff1_0.jpg",
+      "gt": "samples/12148_btv1b53058291ff1_0_gt.png"
+    },
+    {
+      "id": "12148_btv1b53062342ff1_0",
+      "image": "samples/12148_btv1b53062342ff1_0.jpg",
+      "gt": "samples/12148_btv1b53062342ff1_0_gt.png"
+    }
+  ],
+  "model": {
+    "run": "unet-80ep",
+    "parameters": 488069,
+    "epochs_trained": 80,
+    "best_epoch": 54,
+    "best_val_miou": 0.4456142056511624,
+    "loss": {
+      "type": "cross_entropy",
+      "class_weights": null
+    },
+    "train_samples": 157,
+    "val_samples": 40
+  },
+  "test": {
+    "num_samples": 30,
+    "pixel_accuracy": 0.6459131876627604,
+    "mean_iou": 0.42466694687700396,
+    "mean_dice": 0.5444907150447943,
+    "per_class_iou": {
+      "frame": 0.7670841019317509,
+      "water": 0.007065601391379966,
+      "blocks": 0.5269678501747983,
+      "non-built": 0.3076008029889659,
+      "road_network": 0.5146163778981248
+    },
+    "per_class_dice": {
+      "frame": 0.8681919565607382,
+      "water": 0.014032057855253926,
+      "blocks": 0.6902147286394722,
+      "non-built": 0.4704812084633778,
+      "road_network": 0.6795336237051288
+    }
+  }
+}
