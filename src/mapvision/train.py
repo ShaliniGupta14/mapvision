@@ -22,6 +22,7 @@ from mapvision.losses import build_loss, class_weight_tensor
 from mapvision.model import build_model, model_summary
 from mapvision.transforms import TrainTransform, ValTransform
 from mapvision.utils import load_json, save_json
+from mapvision.visualization import plot_training_history
 
 
 def build_optimizer(model: torch.nn.Module, cfg: Config) -> torch.optim.Optimizer:
@@ -287,7 +288,11 @@ def train(
             print("  Saved new best checkpoint.")
         print(flush=True)
 
+    if history:
+        plot_training_history(history, out / "training_curves.png")
+
     print(f"Best val mIoU : {best_miou:.4f}")
     print(f"Checkpoints   : {ckpt_dir}/")
     print(f"History       : {out}/history.json")
+    print(f"Curves        : {out}/training_curves.png")
     return out

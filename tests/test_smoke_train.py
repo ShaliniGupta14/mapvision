@@ -142,6 +142,7 @@ class TestTrainEntryPoint:
         assert len(history) == 1
         assert np.isfinite(history[0]["train_loss"])
         assert np.isfinite(history[0]["val_loss"])
+        assert (out / "training_curves.png").exists()
 
         for name in ("best.pt", "latest.pt"):
             ckpt = torch.load(tmp_path / "checkpoints" / name, map_location="cpu", weights_only=False)
