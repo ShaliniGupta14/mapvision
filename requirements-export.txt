@@ -1,0 +1,4 @@
+-r requirements.txt
+onnx>=1.17
+onnxscript>=0.2
+onnxruntime>=1.20
