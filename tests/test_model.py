@@ -62,6 +62,19 @@ class TestModelSummary:
         captured = capsys.readouterr()
         assert "Total parameters" in captured.out
         assert "Trainable params" in captured.out
+        assert "Output shape:       (N, 5, 256, 256)" in captured.out
+
+    def test_summary_returns_counts(self):
+        model = UNet(num_classes=5, base=16)
+        counts = model_summary(model)
+        assert counts["total_params"] == sum(p.numel() for p in model.parameters())
+
+
+class TestInChannels:
+    def test_build_model_respects_in_channels(self):
+        model = build_model("unet", in_channels=1, num_classes=5, base_channels=8)
+        out = model(torch.randn(1, 1, 64, 64))
+        assert out.shape == (1, 5, 64, 64)
 
 
 class TestParameterCount:

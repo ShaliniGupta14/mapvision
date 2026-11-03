@@ -8,7 +8,7 @@ convolutions, which are more stable on MPS.
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -41,11 +41,12 @@ class UNet(nn.Module):
     Args:
         num_classes: Number of segmentation classes (default 5).
         base:        Base channel count; doubles at each encoder level.
+        in_channels: Input image channels (default 3 for RGB).
     """
 
-    def __init__(self, num_classes: int = 5, base: int = 16):
+    def __init__(self, num_classes: int = 5, base: int = 16, in_channels: int = 3):
         super().__init__()
-        self.enc1 = double_conv(3, base)
+        self.enc1 = double_conv(in_channels, base)
         self.enc2 = double_conv(base, base * 2)
         self.enc3 = double_conv(base * 2, base * 4)
         self.bottleneck = double_conv(base * 4, base * 8)
@@ -85,21 +86,34 @@ class UNet(nn.Module):
         return self.head(d)
 
 
-def model_summary(model: nn.Module, input_shape: Tuple[int, ...] = (3, 256, 256)) -> None:
-    """Print total and trainable parameter counts.
+def model_summary(model: nn.Module, input_shape: Tuple[int, ...] = (3, 256, 256)) -> Dict[str, int]:
+    """Print parameter counts and the output shape for one dummy input.
 
     Args:
         model:       The model to summarise.
-        input_shape: (C, H, W) — used for output shape reporting.
+        input_shape: (C, H, W) of a single input.
+
+    Returns:
+        Dict with ``total_params`` and ``trainable_params``.
     """
     total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+    with torch.inference_mode():
+        output = model(torch.zeros(1, *input_shape, device=device))
+    model.train(was_training)
+
     print("=" * 45)
     print(f"  Model:              {model.__class__.__name__}")
     print(f"  Input shape:        (N, {', '.join(str(d) for d in input_shape)})")
+    print(f"  Output shape:       (N, {', '.join(str(d) for d in output.shape[1:])})")
     print(f"  Total parameters:   {total:,}")
     print(f"  Trainable params:   {trainable:,}")
     print("=" * 45)
+    return {"total_params": total, "trainable_params": trainable}
 
 
 def build_model(name: str = "unet", in_channels: int = 3, num_classes: int = 5, base_channels: int = 16) -> nn.Module:
@@ -115,5 +129,5 @@ def build_model(name: str = "unet", in_channels: int = 3, num_classes: int = 5, 
         ValueError: If the model name is not recognised.
     """
     if name == "unet":
-        return UNet(num_classes=num_classes, base=base_channels)
+        return UNet(num_classes=num_classes, base=base_channels, in_channels=in_channels)
     raise ValueError(f"Unknown model: {name!r}. Only 'unet' is supported.")
