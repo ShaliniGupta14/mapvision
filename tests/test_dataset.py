@@ -95,3 +95,95 @@ class TestEmptyManifest:
         m.write_text("[]")
         with pytest.raises(ValueError, match="Empty manifest"):
             MapDataset(str(m), classes_path=CLASSES_PATH)
+
+
+# ── Validation of malformed pairs ─────────────────────────────────────────
+
+import json
+
+import numpy as np
+from PIL import Image
+
+from mapvision.dataset import DatasetError, load_class_colors, validate_record
+
+
+def _write_pair(tmp_path, name="tile", image_size=(8, 8), label_size=None,
+                label_color=(0, 0, 255), image_mode="RGB", label_name=None):
+    """Write a synthetic image/label pair and return its manifest record."""
+    (tmp_path / "images").mkdir(exist_ok=True)
+    (tmp_path / "labels").mkdir(exist_ok=True)
+    image_path = tmp_path / "images" / f"{name}.png"
+    label_path = tmp_path / "labels" / f"{label_name or name}.png"
+    Image.new(image_mode, image_size).save(image_path)
+    Image.new("RGB", label_size or image_size, label_color).save(label_path)
+    return {"image": str(image_path), "label": str(label_path)}
+
+
+@pytest.fixture(scope="module")
+def colors():
+    return load_class_colors(CLASSES_PATH)
+
+
+class TestValidateRecord:
+    def test_valid_pair_passes(self, tmp_path, colors):
+        validate_record(_write_pair(tmp_path), colors)
+
+    def test_missing_label(self, tmp_path, colors):
+        rec = _write_pair(tmp_path)
+        Path(rec["label"]).unlink()
+        with pytest.raises(DatasetError, match="Missing label"):
+            validate_record(rec, colors)
+
+    def test_filename_mismatch(self, tmp_path, colors):
+        rec = _write_pair(tmp_path, label_name="other")
+        with pytest.raises(DatasetError, match="Filename mismatch"):
+            validate_record(rec, colors)
+
+    def test_unreadable_image(self, tmp_path, colors):
+        rec = _write_pair(tmp_path)
+        Path(rec["image"]).write_bytes(b"not a png")
+        with pytest.raises(DatasetError, match="Unreadable"):
+            validate_record(rec, colors)
+
+    def test_dimension_mismatch(self, tmp_path, colors):
+        rec = _write_pair(tmp_path, label_size=(4, 4))
+        with pytest.raises(DatasetError, match="Dimension mismatch"):
+            validate_record(rec, colors)
+
+    def test_invalid_label_color(self, tmp_path, colors):
+        rec = _write_pair(tmp_path, label_color=(1, 2, 3))
+        with pytest.raises(DatasetError, match="Unknown label colors"):
+            validate_record(rec, colors)
+
+    def test_unexpected_channels(self, tmp_path, colors):
+        rec = _write_pair(tmp_path, image_mode="LA")
+        with pytest.raises(DatasetError, match="Unexpected image mode"):
+            validate_record(rec, colors)
+
+    def test_dataset_validate_flag_raises(self, tmp_path):
+        rec = _write_pair(tmp_path, label_color=(1, 2, 3))
+        manifest = tmp_path / "m.json"
+        manifest.write_text(json.dumps([rec]))
+        with pytest.raises(DatasetError, match="1 invalid records"):
+            MapDataset(str(manifest), classes_path=CLASSES_PATH, validate=True)
+
+    def test_getitem_resizes_and_maps_labels(self, tmp_path):
+        rec = _write_pair(tmp_path, image_size=(300, 300), label_color=(0, 0, 255))
+        manifest = tmp_path / "m.json"
+        manifest.write_text(json.dumps([rec]))
+        image, mask = MapDataset(str(manifest), classes_path=CLASSES_PATH)[0]
+        assert image.shape == (3, 256, 256)
+        assert mask.unique().tolist() == [CLASS_NAMES.index("water")]
+
+
+class TestSplits:
+    """The committed splits must be disjoint by file and by source map."""
+
+    def test_no_overlap_between_splits(self):
+        splits = {s: json.loads(Path(f"splits/{s}.json").read_text())
+                  for s in ("train", "val", "test")}
+        for key in ("image", "source_group"):
+            seen = {s: {r[key] for r in recs} for s, recs in splits.items()}
+            assert not seen["train"] & seen["val"], f"train/val share {key}"
+            assert not seen["train"] & seen["test"], f"train/test share {key}"
+            assert not seen["val"] & seen["test"], f"val/test share {key}"
