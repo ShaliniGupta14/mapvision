@@ -6,12 +6,14 @@ returns the predicted class mask and associated tensors.
 
 from __future__ import annotations
 
+import statistics
+import time
 from pathlib import Path
 from typing import Tuple
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from mapvision.dataset import NUM_CLASSES
 from mapvision.model import build_model
@@ -82,11 +84,14 @@ def predict_image(
     if not image_path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
-    with Image.open(image_path) as src:
-        img = src.convert("RGB").resize(
-            (image_size, image_size), Image.Resampling.BILINEAR
-        )
-        img_np = np.array(img, dtype=np.float32) / 255.0
+    try:
+        with Image.open(image_path) as src:
+            img = src.convert("RGB").resize(
+                (image_size, image_size), Image.Resampling.BILINEAR
+            )
+            img_np = np.array(img, dtype=np.float32) / 255.0
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError(f"Cannot read image {image_path}: {exc}") from exc
 
     image_tensor = torch.from_numpy(img_np.transpose(2, 0, 1).copy())
     batch = image_tensor.unsqueeze(0).to(device)
@@ -96,3 +101,35 @@ def predict_image(
 
     pred_mask = logits.argmax(dim=1).squeeze(0).cpu()
     return image_tensor, pred_mask
+
+
+def _synchronize(device: torch.device) -> None:
+    """Wait for queued kernels so wall-clock timings are accurate."""
+    if device.type == "mps":
+        torch.mps.synchronize()
+    elif device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
+def measure_latency(
+    model: torch.nn.Module,
+    device: torch.device,
+    image_size: int = 256,
+    runs: int = 20,
+    warmup: int = 3,
+) -> float:
+    """Median forward-pass latency in milliseconds for one image (batch 1).
+
+    Excludes image decoding and resizing; measures the model only.
+    """
+    batch = torch.rand(1, 3, image_size, image_size, device=device)
+    timings = []
+    with torch.inference_mode():
+        for i in range(warmup + runs):
+            _synchronize(device)
+            start = time.perf_counter()
+            model(batch)
+            _synchronize(device)
+            if i >= warmup:
+                timings.append((time.perf_counter() - start) * 1000)
+    return statistics.median(timings)
