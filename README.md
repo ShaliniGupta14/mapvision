@@ -2,6 +2,8 @@
 
 **Semantic segmentation of historical map imagery with a compact U-Net.**
 
+**[Live demo → mapvision-seven.vercel.app](https://mapvision-seven.vercel.app)**: the trained model runs in your browser (ONNX Runtime Web), with no server and no uploads.
+
 MapVision is a semantic segmentation system that converts historical map imagery into structured pixel-level geographic layers. Given an RGB map tile, it predicts one of five classes for every pixel (frame, water, building blocks, non-built land, road network) and runs end to end on Apple Silicon (PyTorch MPS), CUDA, or CPU.
 
 ---
@@ -215,6 +217,20 @@ python scripts/report.py --run runs/<run> --checkpoint checkpoints/best.pt
 
 Prints the resume metrics block below from the run's `config.json` and `history.json`, `outputs/metrics/test_metrics.json`, and a fresh latency measurement. Anything not yet measured prints as `TBD`.
 
+### Web demo (ONNX + Vercel)
+
+`web/` is a static site that runs the exported model client-side with ONNX Runtime Web (WebAssembly). Rebuild and deploy it with:
+
+```bash
+pip install -r requirements-export.txt
+python scripts/export_onnx.py --checkpoint checkpoints/best.pt --output web/model/mapvision.onnx
+python scripts/build_web.py --run runs/<run> --metrics outputs/metrics/test_metrics.json
+cd web && python -m http.server 8000          # local preview at http://localhost:8000
+vercel deploy --prod                           # from web/, after 'vercel link'
+```
+
+The export script checks the ONNX output against PyTorch, and `build_web.py` copies the deployed model's measured metrics into `web/data.json`. Uploaded images are stretched to 256×256 with the browser's resampler, which is close to, but not bit-identical with, PIL's bilinear resize. The bundled sample tiles are pre-resized, so their predictions match Python exactly.
+
 ---
 
 ## Results
@@ -362,6 +378,8 @@ mapvision/
 │   ├── visualization.py        palette, overlays, grids, curves
 │   └── utils.py                JSON I/O, metric report formatting
 ├── scripts/                    train / evaluate / predict / validate_dataset / report
+│                               export_onnx / build_web
+├── web/                        static in-browser demo (deployed on Vercel)
 ├── tests/
 ├── data/raw/                   (gitignored) dataset
 ├── checkpoints/                (gitignored) best.pt, latest.pt
