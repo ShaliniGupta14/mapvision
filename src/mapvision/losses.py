@@ -45,7 +45,10 @@ class DiceLoss(nn.Module):
         dice_per_class = (2.0 * intersection + self.smooth) / (
             cardinality + self.smooth
         )
-        return 1.0 - dice_per_class.mean()
+        # Absent classes would score a "perfect" smoothed Dice of 1 and
+        # dilute the loss, so average only over classes in the targets.
+        present = targets_one_hot.sum(dim=(0, 2, 3)) > 0
+        return 1.0 - dice_per_class[present].mean()
 
 
 class CEDiceLoss(nn.Module):

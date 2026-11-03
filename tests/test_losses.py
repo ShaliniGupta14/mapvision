@@ -25,6 +25,11 @@ class TestDiceLoss:
         loss = DiceLoss(smooth=1e-6)(_perfect_logits(targets), targets)
         assert loss.item() == pytest.approx(0.0, abs=1e-4)
 
+    def test_wrong_prediction_is_large(self):
+        targets = torch.zeros(1, 8, 8, dtype=torch.int64)
+        loss = DiceLoss(smooth=1e-6)(_perfect_logits(targets + 1), targets)
+        assert loss.item() > 0.9
+
 
 class TestBuildLoss:
     @pytest.mark.parametrize("loss_type", ["cross_entropy", "ce_dice"])
