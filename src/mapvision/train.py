@@ -46,7 +46,6 @@ def build_scheduler(
             mode="max",
             patience=cfg.training.scheduler_patience,
             factor=cfg.training.scheduler_factor,
-            verbose=False,
         )
     elif sched == "cosine_annealing":
         return torch.optim.lr_scheduler.CosineAnnealingLR(
