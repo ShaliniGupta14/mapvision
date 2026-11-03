@@ -1,0 +1,8 @@
+{
+  "seed": 42,
+  "validation_fraction_of_eligible_groups": 0.2,
+  "grouping": "Remove final underscore plus digits from filename stem",
+  "status": "Provisional filename-based grouping; metadata review pending",
+  "test": "Supplied paris/eval partition; reserved for final evaluation",
+  "overlap_policy": "Exclude matching test groups from development data"
+}

@@ -1,0 +1,44 @@
+seed: 42
+
+data:
+  image_size: 256
+  num_classes: 5
+  batch_size: 4
+  num_workers: 0
+  train_manifest: splits/train.json
+  val_manifest: splits/val.json
+  test_manifest: splits/test.json
+  classes_path: classes.json
+
+model:
+  name: unet
+  in_channels: 3
+  num_classes: 5
+  base_channels: 16
+
+training:
+  epochs: 25
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: adamw
+  scheduler: reduce_lr_on_plateau
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+
+loss:
+  type: cross_entropy   # options: cross_entropy | ce_dice
+
+augmentation:
+  enabled: true
+  horizontal_flip: true
+  vertical_flip: true
+  rotation_90: true
+  brightness_contrast: true
+
+device:
+  prefer_mps: true
+
+paths:
+  checkpoints: checkpoints
+  outputs: outputs
+  runs: runs

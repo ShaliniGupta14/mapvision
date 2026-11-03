@@ -1,0 +1,152 @@
+[
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53058291ff1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53058291ff1_0.png",
+    "source_group": "12148_btv1b53058291ff1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53062148cf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53062148cf1_0.png",
+    "source_group": "12148_btv1b53062148cf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53062342ff1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53062342ff1_0.png",
+    "source_group": "12148_btv1b53062342ff1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53063570wf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53063570wf1_0.png",
+    "source_group": "12148_btv1b53063570wf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53063772jf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53063772jf1_0.png",
+    "source_group": "12148_btv1b53063772jf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53066630nf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53066630nf1_0.png",
+    "source_group": "12148_btv1b53066630nf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53085125vf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53085125vf1_0.png",
+    "source_group": "12148_btv1b53085125vf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53085143sf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53085143sf1_0.png",
+    "source_group": "12148_btv1b53085143sf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53085150vf3_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53085150vf3_0.png",
+    "source_group": "12148_btv1b53085150vf3"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53085172kf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53085172kf1_0.png",
+    "source_group": "12148_btv1b53085172kf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b530851803f1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b530851803f1_0.png",
+    "source_group": "12148_btv1b530851803f1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b53087560gf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b53087560gf1_0.png",
+    "source_group": "12148_btv1b53087560gf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8439505gf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8439505gf1_0.png",
+    "source_group": "12148_btv1b8439505gf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8441039bf3_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8441039bf3_0.png",
+    "source_group": "12148_btv1b8441039bf3"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8441680kf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8441680kf1_0.png",
+    "source_group": "12148_btv1b8441680kf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8443158nf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8443158nf1_0.png",
+    "source_group": "12148_btv1b8443158nf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8444315wf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8444315wf1_0.png",
+    "source_group": "12148_btv1b8444315wf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8444518tf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8444518tf1_0.png",
+    "source_group": "12148_btv1b8444518tf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8445922df1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8445922df1_0.png",
+    "source_group": "12148_btv1b8445922df1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/12148_btv1b8492760vf1_0.png",
+    "label": "data/raw/paris/eval/labels/12148_btv1b8492760vf1_0.png",
+    "source_group": "12148_btv1b8492760vf1"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_109.png",
+    "label": "data/raw/paris/eval/labels/BHVP_109.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_19.png",
+    "label": "data/raw/paris/eval/labels/BHVP_19.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_29.png",
+    "label": "data/raw/paris/eval/labels/BHVP_29.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_39.png",
+    "label": "data/raw/paris/eval/labels/BHVP_39.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_49.png",
+    "label": "data/raw/paris/eval/labels/BHVP_49.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_59.png",
+    "label": "data/raw/paris/eval/labels/BHVP_59.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_69.png",
+    "label": "data/raw/paris/eval/labels/BHVP_69.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_79.png",
+    "label": "data/raw/paris/eval/labels/BHVP_79.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_89.png",
+    "label": "data/raw/paris/eval/labels/BHVP_89.png",
+    "source_group": "BHVP"
+  },
+  {
+    "image": "data/raw/paris/eval/images/BHVP_99.png",
+    "label": "data/raw/paris/eval/labels/BHVP_99.png",
+    "source_group": "BHVP"
+  }
+]

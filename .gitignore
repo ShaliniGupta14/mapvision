@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Checkpoints and model outputs
+checkpoints/best.pt
+checkpoints/latest.pt
+runs/
+
+# Training outputs
+outputs/predictions/*.png
+outputs/metrics/*.json
+outputs/plots/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+notebooks/*.ipynb
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Data (large binary files — not committed to Git)
+data/raw/
+data/masks/
+
+# Logs
+*.log
