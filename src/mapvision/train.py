@@ -176,17 +176,10 @@ def train(cfg: Config, output_dir: Optional[str] = None) -> Path:
         train_loss /= len(train_loader.dataset)
 
         # ── Validation ────────────────────────────────────────────────────
-        model.eval()
-        val_loss = 0.0
-
-        with torch.inference_mode():
-            for images, masks in val_loader:
-                images, masks = images.to(device), masks.to(device)
-                logits = model(images)
-                val_loss += criterion(logits, masks).item() * images.size(0)
-
-        val_loss /= len(val_loader.dataset)
-        val_metrics = evaluate(model, val_loader, device, cfg.data.num_classes)
+        val_metrics = evaluate(
+            model, val_loader, device, cfg.data.num_classes, criterion=criterion
+        )
+        val_loss = val_metrics["loss"]
         miou = val_metrics["mean_iou"]
         dice = val_metrics["mean_dice"]
 

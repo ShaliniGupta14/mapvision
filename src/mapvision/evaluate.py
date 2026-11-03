@@ -6,7 +6,7 @@ This module is imported by scripts/evaluate.py and by the training loop.
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 from torch.utils.data import DataLoader
@@ -20,26 +20,34 @@ def evaluate(
     loader: DataLoader,
     device: torch.device,
     num_classes: int = 5,
+    criterion: Optional[torch.nn.Module] = None,
 ) -> Dict:
-    """Evaluate a segmentation model on a dataset.
+    """Evaluate a segmentation model on a dataset in a single pass.
 
     Args:
-        model:       Model in eval mode.
+        model:       Model to evaluate (switched to eval mode).
         loader:      DataLoader yielding (images, masks) batches.
         device:      Compute device.
         num_classes: Number of semantic classes.
+        criterion:   Optional loss; if given, the sample-weighted mean loss
+                     is added to the result under ``"loss"``.
 
     Returns:
-        Metrics dict from :class:`SegmentationMetrics`.
+        Metrics dict from :class:`SegmentationMetrics` (plus ``"loss"``).
     """
     metrics = SegmentationMetrics(num_classes=num_classes, class_names=CLASS_NAMES)
     model.eval()
+    total_loss = 0.0
 
     with torch.inference_mode():
         for images, masks in loader:
-            images = images.to(device)
+            images, masks = images.to(device), masks.to(device)
             logits = model(images)
-            preds = logits.argmax(dim=1)
-            metrics.update(preds, masks)
+            if criterion is not None:
+                total_loss += criterion(logits, masks).item() * images.size(0)
+            metrics.update(logits.argmax(dim=1), masks)
 
-    return metrics.compute()
+    results = metrics.compute()
+    if criterion is not None:
+        results["loss"] = total_loss / len(loader.dataset)
+    return results
