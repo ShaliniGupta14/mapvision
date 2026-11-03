@@ -1,15 +1,16 @@
 """Core training loop for MapVision.
 
 Handles one full training run: data loading, model construction,
-optimizer setup, epoch loop with validation, checkpointing, and
-history logging.
+optimizer setup, epoch loop with validation, checkpointing, resuming,
+and history logging.
 """
 
 from __future__ import annotations
 
 import time
+from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
 from torch.utils.data import DataLoader
@@ -18,9 +19,9 @@ from mapvision.config import Config, get_device, set_seeds
 from mapvision.dataset import CLASS_NAMES, MapDataset
 from mapvision.evaluate import evaluate
 from mapvision.losses import build_loss, class_weight_tensor
-from mapvision.model import UNet, build_model, model_summary
+from mapvision.model import build_model, model_summary
 from mapvision.transforms import TrainTransform, ValTransform
-from mapvision.utils import save_json
+from mapvision.utils import load_json, save_json
 
 
 def build_optimizer(model: torch.nn.Module, cfg: Config) -> torch.optim.Optimizer:
@@ -32,7 +33,7 @@ def build_optimizer(model: torch.nn.Module, cfg: Config) -> torch.optim.Optimize
         return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
     elif opt_name == "adamw":
         return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
-    raise ValueError(f"Unknown optimizer: {opt_name!r}")
+    raise ValueError(f"Unknown optimizer: {opt_name!r}. Choose 'adam' or 'adamw'.")
 
 
 def build_scheduler(
@@ -53,31 +54,14 @@ def build_scheduler(
         )
     elif sched == "none":
         return None
-    raise ValueError(f"Unknown scheduler: {sched!r}")
+    raise ValueError(
+        f"Unknown scheduler: {sched!r}. "
+        "Choose 'reduce_lr_on_plateau', 'cosine_annealing' or 'none'."
+    )
 
 
-def train(cfg: Config, output_dir: Optional[str] = None) -> Path:
-    """Run training and return the output directory path.
-
-    Args:
-        cfg:        Configuration object.
-        output_dir: Where to write checkpoints and history. Defaults to
-                    ``cfg.paths.runs/run_<timestamp>``.
-
-    Returns:
-        Path to the output directory containing best.pt and history.json.
-    """
-    set_seeds(cfg.seed)
-    device = get_device(cfg.device.prefer_mps)
-
-    if output_dir is None:
-        run_id = f"run_{int(time.time())}"
-        out = Path(cfg.paths.runs) / run_id
-    else:
-        out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-
-    # ── Data ──────────────────────────────────────────────────────────────
+def build_dataloaders(cfg: Config) -> Tuple[DataLoader, DataLoader]:
+    """Build train (augmented, shuffled) and validation (plain) loaders."""
     aug_cfg = cfg.augmentation
     train_transform = TrainTransform(
         horizontal_flip=aug_cfg.horizontal_flip,
@@ -113,111 +97,175 @@ def train(cfg: Config, output_dir: Optional[str] = None) -> Path:
         shuffle=False,
         num_workers=cfg.data.num_workers,
     )
+    return train_loader, val_loader
 
-    print(f"Train samples : {len(train_set)}")
-    print(f"Val samples   : {len(val_set)}")
 
-    # ── Model ─────────────────────────────────────────────────────────────
+def train_one_epoch(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    criterion: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    epoch: int,
+) -> float:
+    """Run one optimisation pass and return the sample-weighted mean loss."""
+    model.train()
+    total_loss = 0.0
+    for images, masks in loader:
+        images, masks = images.to(device), masks.to(device)
+        optimizer.zero_grad(set_to_none=True)
+        loss = criterion(model(images), masks)
+        if not torch.isfinite(loss):
+            raise RuntimeError(f"Non-finite training loss at epoch {epoch}")
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * images.size(0)
+    return total_loss / len(loader.dataset)
+
+
+def save_checkpoint(
+    path: Path,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Optional[object],
+    epoch: int,
+    val_miou: float,
+    best_val_miou: float,
+    config: Dict,
+) -> None:
+    """Write a resumable checkpoint with weights, optimizer/scheduler state and config."""
+    torch.save(
+        {
+            "model_state": {k: v.detach().cpu() for k, v in model.state_dict().items()},
+            "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict() if scheduler is not None else None,
+            "epoch": epoch,
+            "val_miou": val_miou,
+            "best_val_miou": best_val_miou,
+            "config": config,
+            "class_names": CLASS_NAMES,
+        },
+        path,
+    )
+
+
+def _load_resume_state(
+    path: str,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Optional[object],
+) -> Tuple[int, float]:
+    """Restore training state in place; return (start_epoch, best_val_miou)."""
+    ckpt_path = Path(path)
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f"Resume checkpoint not found: {path}")
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    missing = [k for k in ("model_state", "optimizer_state", "epoch") if k not in ckpt]
+    if missing:
+        raise KeyError(f"Checkpoint {path} cannot be resumed; missing keys: {missing}")
+
+    model.load_state_dict(ckpt["model_state"])
+    optimizer.load_state_dict(ckpt["optimizer_state"])
+    if scheduler is not None and ckpt.get("scheduler_state") is not None:
+        scheduler.load_state_dict(ckpt["scheduler_state"])
+    best = ckpt.get("best_val_miou", ckpt.get("val_miou", -1.0))
+    print(f"Resumed from {path} (epoch {ckpt['epoch']}, best val mIoU {best:.4f})")
+    return ckpt["epoch"] + 1, best
+
+
+def train(
+    cfg: Config,
+    output_dir: Optional[str] = None,
+    resume: Optional[str] = None,
+) -> Path:
+    """Run training and return the output directory path.
+
+    Args:
+        cfg:        Configuration object.
+        output_dir: Where to write config.json and history.json. Defaults to
+                    ``cfg.paths.runs/run_<timestamp>``.
+        resume:     Optional checkpoint path to continue training from.
+
+    Returns:
+        Path to the output directory. Checkpoints (best.pt, latest.pt) are
+        written to ``cfg.paths.checkpoints``.
+    """
+    set_seeds(cfg.seed)
+    device = get_device(cfg.device.prefer_mps)
+
+    out = Path(output_dir) if output_dir else Path(cfg.paths.runs) / f"run_{int(time.time())}"
+    out.mkdir(parents=True, exist_ok=True)
+    ckpt_dir = Path(cfg.paths.checkpoints)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    train_loader, val_loader = build_dataloaders(cfg)
+    print(f"Train samples : {len(train_loader.dataset)}")
+    print(f"Val samples   : {len(val_loader.dataset)}")
+
     model = build_model(
         name=cfg.model.name,
         in_channels=cfg.model.in_channels,
         num_classes=cfg.model.num_classes,
         base_channels=cfg.model.base_channels,
     ).to(device)
-    model_summary(model)
+    param_counts = model_summary(
+        model, (cfg.model.in_channels, cfg.data.image_size, cfg.data.image_size)
+    )
 
     weights = class_weight_tensor(cfg.loss.class_weights, cfg.model.num_classes, device)
     criterion = build_loss(cfg.loss.type, weight=weights)
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
 
-    # ── Config dump ───────────────────────────────────────────────────────
-    config_record: Dict = {
-        "seed": cfg.seed,
-        "image_size": cfg.data.image_size,
-        "num_classes": cfg.data.num_classes,
-        "base_channels": cfg.model.base_channels,
-        "classes": CLASS_NAMES,
-        "epochs": cfg.training.epochs,
-        "batch_size": cfg.data.batch_size,
-        "learning_rate": cfg.training.learning_rate,
-        "optimizer": cfg.training.optimizer,
-        "loss": cfg.loss.type,
-        "device": str(device),
-        "torch_version": torch.__version__,
-        "model": {"name": cfg.model.name, "num_classes": cfg.model.num_classes, "base_channels": cfg.model.base_channels},
-    }
-    save_json(config_record, out / "config.json")
+    config_record: Dict = asdict(cfg)
+    save_json(
+        {
+            **config_record,
+            "class_names": CLASS_NAMES,
+            "device": str(device),
+            "torch_version": torch.__version__,
+            "train_samples": len(train_loader.dataset),
+            "val_samples": len(val_loader.dataset),
+            **param_counts,
+        },
+        out / "config.json",
+    )
 
-    history = []
-    best_miou = -1.0
-    ckpt_dir = Path(cfg.paths.checkpoints)
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    start_epoch, best_miou = 1, -1.0
+    history: List[Dict] = []
+    if resume is not None:
+        start_epoch, best_miou = _load_resume_state(resume, model, optimizer, scheduler)
+        if (out / "history.json").exists():
+            history = [r for r in load_json(out / "history.json") if r["epoch"] < start_epoch]
 
-    print(f"\nTraining on {device} for {cfg.training.epochs} epochs\n")
+    epochs = cfg.training.epochs
+    print(f"\nTraining on {device} for epochs {start_epoch}–{epochs}\n")
 
-    for epoch in range(1, cfg.training.epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
         t0 = time.perf_counter()
-        model.train()
-        train_loss = 0.0
-
-        for images, masks in train_loader:
-            images, masks = images.to(device), masks.to(device)
-            optimizer.zero_grad(set_to_none=True)
-            logits = model(images)
-            loss = criterion(logits, masks)
-
-            if not torch.isfinite(loss):
-                raise RuntimeError(f"Non-finite training loss at epoch {epoch}")
-
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item() * images.size(0)
-
-        train_loss /= len(train_loader.dataset)
-
-        # ── Validation ────────────────────────────────────────────────────
+        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device, epoch)
         val_metrics = evaluate(
             model, val_loader, device, cfg.data.num_classes, criterion=criterion
         )
-        val_loss = val_metrics["loss"]
         miou = val_metrics["mean_iou"]
-        dice = val_metrics["mean_dice"]
-
         elapsed = time.perf_counter() - t0
-        row = {
+
+        history.append({
             "epoch": epoch,
             "train_loss": train_loss,
-            "val_loss": val_loss,
+            "val_loss": val_metrics["loss"],
             "val_miou": miou,
-            "val_dice": dice,
+            "val_dice": val_metrics["mean_dice"],
             "val_pixel_acc": val_metrics["pixel_accuracy"],
             "val_iou": val_metrics["per_class_iou"],
+            "lr": optimizer.param_groups[0]["lr"],
             "seconds": elapsed,
-        }
-        history.append(row)
+        })
         save_json(history, out / "history.json")
 
-        # ── Checkpoint ────────────────────────────────────────────────────
-        def _make_ckpt() -> Dict:
-            return {
-                "model_state": {
-                    k: v.detach().cpu() for k, v in model.state_dict().items()
-                },
-                "optimizer_state": optimizer.state_dict(),
-                "epoch": epoch,
-                "val_miou": miou,
-                "config": config_record,
-                "class_names": CLASS_NAMES,
-            }
-
-        torch.save(_make_ckpt(), ckpt_dir / "latest.pt")
-
-        new_best = ""
-        if miou > best_miou:
+        is_best = miou > best_miou
+        if is_best:
             best_miou = miou
-            torch.save(_make_ckpt(), ckpt_dir / "best.pt")
-            new_best = " ← best"
 
         if scheduler is not None:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -225,17 +273,21 @@ def train(cfg: Config, output_dir: Optional[str] = None) -> Path:
             else:
                 scheduler.step()
 
-        print(
-            f"Epoch {epoch:02d}/{cfg.training.epochs:02d}  |  "
-            f"train {train_loss:.4f}  |  "
-            f"val {val_loss:.4f}  |  "
-            f"mIoU {miou:.4f}  |  "
-            f"Dice {dice:.4f}  |  "
-            f"{elapsed:.1f}s{new_best}",
-            flush=True,
-        )
+        ckpt_args = (model, optimizer, scheduler, epoch, miou, best_miou, config_record)
+        save_checkpoint(ckpt_dir / "latest.pt", *ckpt_args)
+        if is_best:
+            save_checkpoint(ckpt_dir / "best.pt", *ckpt_args)
 
-    print(f"\nBest val mIoU : {best_miou:.4f}")
+        print(f"Epoch {epoch:02d}/{epochs:02d}  ({elapsed:.1f}s)")
+        print(f"  Train Loss: {train_loss:.4f}")
+        print(f"  Val Loss:   {val_metrics['loss']:.4f}")
+        print(f"  Val mIoU:   {miou:.4f}")
+        print(f"  Val Dice:   {val_metrics['mean_dice']:.4f}")
+        if is_best:
+            print("  Saved new best checkpoint.")
+        print(flush=True)
+
+    print(f"Best val mIoU : {best_miou:.4f}")
     print(f"Checkpoints   : {ckpt_dir}/")
     print(f"History       : {out}/history.json")
     return out

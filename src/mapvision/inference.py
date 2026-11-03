@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from mapvision.dataset import CLASS_NAMES
+from mapvision.dataset import NUM_CLASSES
 from mapvision.model import build_model
 
 
@@ -35,7 +35,10 @@ def load_checkpoint(checkpoint_path: str | Path, device: torch.device) -> Tuple:
     if not path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    try:
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    except Exception as exc:  # torch raises several types for corrupt files
+        raise ValueError(f"Cannot read checkpoint {checkpoint_path}: {exc}") from exc
     for key in ("model_state", "config"):
         if key not in ckpt:
             raise KeyError(f"Checkpoint missing required key: {key!r}")
@@ -44,14 +47,16 @@ def load_checkpoint(checkpoint_path: str | Path, device: torch.device) -> Tuple:
     model_cfg = cfg.get("model", {})
     model = build_model(
         name=model_cfg.get("name", "unet"),
-        num_classes=cfg.get("num_classes", 5) or model_cfg.get("num_classes", 5),
+        in_channels=model_cfg.get("in_channels", 3),
+        num_classes=model_cfg.get("num_classes", NUM_CLASSES),
         base_channels=model_cfg.get("base_channels", 16),
     )
     model.load_state_dict(ckpt["model_state"])
     model = model.to(device)
     model.eval()
 
-    return model, cfg, ckpt.get("epoch", -1), ckpt.get("val_miou", float("nan"))
+    best = ckpt.get("best_val_miou", ckpt.get("val_miou", float("nan")))
+    return model, cfg, ckpt.get("epoch", -1), best
 
 
 def predict_image(
