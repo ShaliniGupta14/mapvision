@@ -172,7 +172,7 @@ python scripts/train.py --config configs/default.yaml --output runs/exp01 \
 Every epoch validates on the val split and writes `checkpoints/latest.pt`. When val mIoU improves, it also writes `checkpoints/best.pt`. Checkpoints hold model, optimizer and scheduler state, the epoch, the best val mIoU, the full config and the class names. The run directory receives `config.json`, `history.json` and `training_curves.png`.
 
 ```text
-Epoch 03/25  (10.0s)
+Epoch 03/80  (10.0s)
   Train Loss: …
   Val Loss:   …
   Val mIoU:   …
@@ -207,17 +207,79 @@ Writes to `outputs/predictions/`:
 
 It also prints the median model latency for a single 256×256 tile.
 
+### Summarise a run
+
+```bash
+python scripts/report.py --run runs/<run> --checkpoint checkpoints/best.pt
+```
+
+Prints the resume metrics block below from the run's `config.json` and `history.json`, `outputs/metrics/test_metrics.json`, and a fresh latency measurement. Anything not yet measured prints as `TBD`.
+
 ---
 
 ## Results
 
-RESULTS_PLACEHOLDER
+All numbers below were measured by the scripts in this repo: `train.py`, `evaluate.py` and `report.py`. The model is the default config (`base_channels: 16`, cross-entropy, AdamW 1e-3, ReduceLROnPlateau, augmentation on), trained on an Apple M-series GPU (MPS) with PyTorch 2.15. Test is the held-out `paris/eval` split. It was never used for model selection, and the best checkpoint was chosen by val mIoU.
+
+| Metric (test, 30 tiles) | 25 epochs | **80 epochs (default)** |
+|-------------------------|----------:|------------------------:|
+| Pixel accuracy          | 0.5411    | **0.6459**              |
+| Mean IoU                | 0.3383    | **0.4247**              |
+| Mean Dice               | 0.4614    | **0.5445**              |
+| Best val mIoU (epoch)   | 0.3896 (25) | **0.4456 (54)**       |
+| Training time           | 4.3 min   | 14.6 min                |
+
+At 25 epochs val mIoU was still rising at the last epoch. At 80 epochs it peaks at epoch 54 and plateaus as the scheduler decays the learning rate.
+
+Per-class results for the 80-epoch model on test:
+
+| Class          | IoU    | Dice   |
+|----------------|-------:|-------:|
+| frame          | 0.7671 | 0.8682 |
+| water          | 0.0071 | 0.0140 |
+| blocks         | 0.5270 | 0.6902 |
+| non-built      | 0.3076 | 0.4705 |
+| road_network   | 0.5146 | 0.6795 |
+
+```text
+MAPVISION RESUME METRICS
+------------------------
+Dataset size:         227 annotated 1000x1000 tiles used (Paris partition)
+Training samples:     157
+Validation samples:   40
+Test samples:         30
+Model parameters:     488,069
+Best validation mIoU: 0.4456 (epoch 54)
+Test mIoU:            0.4247
+Test Dice:            0.5445
+Pixel accuracy:       0.6459
+Inference latency:    7.2 ms / 256x256 tile (median, batch 1, mps)
+Training device:      mps (torch 2.15.0), 80 epochs in 14.6 min
+```
+
+Latency covers the model forward pass only, not image decoding, and varies from run to run on MPS. The same architecture measured 115 ms per tile on CPU (`device.prefer_mps: false`).
+
+**Known limitations**
+
+- **Water is essentially not learned** (IoU 0.007). It covers 2.8% of pixels, and the confusion matrix shows it predicted mostly as blocks and non-built. Setting `loss.class_weights` or `loss.type: ce_dice` is the first thing to try. Neither has been run yet.
+- **Blocks and non-built are often confused**, especially plain (unhatched) blocks, which the model reads as open land.
+- Each 1000×1000 patch is downsampled to 256×256, which thins streets to a few pixels. Native-resolution crops are the main planned improvement (see [Future Work](#future-work)).
 
 ---
 
 ## Sample Outputs
 
-SAMPLES_PLACEHOLDER
+Test tile from the held-out split: source image, ground truth, prediction and overlay. The model was trained for 80 epochs.
+
+![Input, ground truth, prediction and overlay for a Paris test tile](docs/images/sample_gt_vs_pred.png)
+
+The road network is traced well. Many plain blocks are predicted as non-built (green), the most common error on this split.
+
+Training curves for the 80-epoch run:
+
+![Train/val loss and val mIoU/Dice per epoch](docs/images/training_curves.png)
+
+Generate more with `python scripts/evaluate.py --checkpoint checkpoints/best.pt --save-examples N` (written to `outputs/plots/`), or for any image with `scripts/predict.py`.
 
 ---
 
@@ -254,7 +316,7 @@ data:      {image_size: 256, num_classes: 5, batch_size: 4, num_workers: 0,
             train_manifest: splits/train.json, val_manifest: splits/val.json,
             test_manifest: splits/test.json, classes_path: classes.json}
 model:     {name: unet, in_channels: 3, num_classes: 5, base_channels: 16}
-training:  {epochs: 25, learning_rate: 0.001, weight_decay: 0.0001,
+training:  {epochs: 80, learning_rate: 0.001, weight_decay: 0.0001,
             optimizer: adamw,                  # adam | adamw
             scheduler: reduce_lr_on_plateau,   # reduce_lr_on_plateau | cosine_annealing | none
             scheduler_patience: 5, scheduler_factor: 0.5}
@@ -299,7 +361,7 @@ mapvision/
 │   ├── inference.py            checkpoint loading, prediction, latency
 │   ├── visualization.py        palette, overlays, grids, curves
 │   └── utils.py                JSON I/O, metric report formatting
-├── scripts/                    train / evaluate / predict / validate_dataset
+├── scripts/                    train / evaluate / predict / validate_dataset / report
 ├── tests/
 ├── data/raw/                   (gitignored) dataset
 ├── checkpoints/                (gitignored) best.pt, latest.pt
